@@ -184,7 +184,7 @@ for channel_id, upload_playlist in upload_playlists:
     slice_size = 50
     for i in range(0, len(video_ids_to_capture), slice_size):
         v_ids = video_ids_to_capture[i:i+slice_size]
-        vid_data = yt.get_video_metadata(v_ids, parser=lambda x: x)
+        vid_data = yt.get_video_metadata(v_ids, part=['statistics','snippet','contentDetails'], parser=lambda x: x)
 
         for v in vid_data:
             v["minerva_collected"] = time.time()
