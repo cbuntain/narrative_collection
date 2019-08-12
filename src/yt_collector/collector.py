@@ -161,16 +161,25 @@ for channel_id, upload_playlist in upload_playlists:
     video_count = 0
     video_ids = []
 
-    # Find every video in the upload playlist and write it to the 
-    #. file for this playlist
-    with open(videos_file, "w") as out_file:
-        for v in yt.get_videos_from_playlist_id(upload_playlist, part=["snippet", ], parser=lambda x: x):
-            v["minerva_collected"] = time.time()
-            out_file.write("%s\n" % json.dumps(v))
-            out_file.flush()
+    # If we have a cached playlist file, use it instead of pulling data
+    #  Note: If you want to pull all new videos, just delete this file
+    if os.path.exists(videos_file):
+        with open(videos_file, "r") as in_file:
+            for line in in_file:
+                video_obj = json.loads(line)
+                video_ids.append(video_obj["snippet"]["resourceId"]["videoId"])
+                video_count += 1
+    else:
+        # Find every video in the upload playlist and write it to the 
+        #. file for this playlist
+        with open(videos_file, "w") as out_file:
+            for v in yt.get_videos_from_playlist_id(upload_playlist, part=["snippet", ], parser=lambda x: x):
+                v["minerva_collected"] = time.time()
+                out_file.write("%s\n" % json.dumps(v))
+                out_file.flush()
 
-            video_ids.append(v["snippet"]["resourceId"]["videoId"])
-            video_count += 1
+                video_ids.append(v["snippet"]["resourceId"]["videoId"])
+                video_count += 1
     print("\t Captured playlist videos:", video_count)
 
     # Now we test our cache to see what videos we've already pulled
