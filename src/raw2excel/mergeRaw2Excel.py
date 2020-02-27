@@ -6,6 +6,7 @@ import glob
 import gzip
 import json
 import math
+import os.path
 
 import pandas as pd
 
@@ -21,7 +22,21 @@ tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
 ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
 
 fb_collection_path = "../../data/poland/collections/fb/*.gz"
-yt_collection_path = "../../data/poland/collections/yt/yt_data.20190815"
+yt_collection_path = "../../data/poland/collections/yt/yt_data.20200227"
+
+map_platform_post_id_to_umd_post_id = {}
+
+if os.path.exists("extracted_post_id_map.json"):
+    with open("extracted_post_id_map.json", "r") as in_file:
+        map_platform_post_id_to_umd_post_id = json.load(in_file)
+
+umd_post_id_numeric = 0
+if len(map_platform_post_id_to_umd_post_id) > 0:
+    umd_post_id_numeric = max([
+        int(x) for x in map_platform_post_id_to_umd_post_id.values()
+    ]) + 1
+
+    print("Updated Min Post ID:", umd_post_id_numeric)
 
 def create_account_row():
     row_schema = {
@@ -60,7 +75,6 @@ def create_post_row():
     row_schema = {
         "UmdPostId": None,
         "AccountPlatformId": None,
-        "PostID": None,
         "PlatformPostID": None,
         "URL": None,
         "VideoTitle": None,
@@ -106,8 +120,6 @@ def create_post_row():
     
     return row_schema
 
-umd_post_id_numeric = 0
-
 account_map_fb = {}
 fb_rows = []
 
@@ -139,10 +151,16 @@ for dataset in glob.iglob(fb_collection_path):
             this_post_row = create_post_row()
             
             # Top-level info
-            this_post_row["UmdPostId"] = umd_post_id_numeric
             this_post_row["AccountPlatformId"] = fb_author_id
             this_post_row["PlatformPostID"] = fb_post["platformId"]
             this_post_row["URL"] = fb_post["postUrl"]
+
+            # Pull the post ID if we have it
+            if ( this_post_row["PlatformPostID"] in map_platform_post_id_to_umd_post_id ):
+                this_post_row["UmdPostId"] = map_platform_post_id_to_umd_post_id[this_post_row["PlatformPostID"]]
+            else:
+                this_post_row["UmdPostId"] = umd_post_id_numeric
+                umd_post_id_numeric += 1
             
             # Get type
             this_post_type = fb_post["type"]
@@ -204,7 +222,6 @@ for dataset in glob.iglob(fb_collection_path):
             
             # Done
             fb_rows.append(this_post_row)
-            umd_post_id_numeric += 1
 
 
 fb_platform_to_umdid_map = {
@@ -339,10 +356,16 @@ for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
         # Process the video
         this_video_row = create_post_row()
         
-        this_video_row["UmdPostId"] = umd_post_id_numeric
         this_video_row["AccountPlatformId"] = video["snippet"]["channelId"]
         this_video_row["PlatformPostID"] = video["id"]
         this_video_row["URL"] = "https://www.youtube.com/watch?v=" + video["id"]
+
+        # Pull the video ID if we have it
+        if ( this_video_row["PlatformPostID"] in map_platform_post_id_to_umd_post_id ):
+            this_video_row["UmdPostId"] = map_platform_post_id_to_umd_post_id[this_video_row["PlatformPostID"]]
+        else:
+            this_video_row["UmdPostId"] = umd_post_id_numeric
+            umd_post_id_numeric += 1
 
         # Title and description
         this_video_row["Text"] = video["snippet"]["description"]
