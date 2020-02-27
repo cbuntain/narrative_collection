@@ -6,6 +6,7 @@ import glob
 import gzip
 import json
 import math
+import time
 import os.path
 
 import pandas as pd
@@ -17,7 +18,7 @@ country = "PL"
 coordination_df = pd.read_excel("../../data/poland/Influencers Poland 2019-7-26.xlsx")
 
 fb_df = pd.read_csv("../../data/poland/fb_pages.fixed.csv")
-yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.csv")
+yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.20200227.csv")
 tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
 ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
 
@@ -223,7 +224,10 @@ for dataset in glob.iglob(fb_collection_path):
             # Done
             fb_rows.append(this_post_row)
 
+fb_posts_df = pd.DataFrame(fb_rows)
+fb_posts_df.to_csv("fb_structure_posts.csv", index=False, encoding="utf8")
 
+# Handle FB Accounts
 fb_platform_to_umdid_map = {
     row[2].replace("https://www.facebook.com/", "").partition("/")[0].lower():row[1] 
     for row in fb_df.itertuples()
@@ -257,10 +261,8 @@ for acct_id, acct_map in account_map_fb.items():
     fb_accounts.append(this_account)
 
 
-fb_posts_df = pd.DataFrame(fb_rows)
 fb_accts_df = pd.DataFrame(fb_accounts)
 
-fb_posts_df.to_csv("fb_structure_posts.csv", index=False, encoding="utf8")
 fb_accts_df.to_csv("fb_structure_accounts.csv", index=False, encoding="utf8")
 
 ######################################################
@@ -293,11 +295,12 @@ with open(yt_collection_path + "/chan_meta.json") as in_file:
                     this_channel_umd_id = yt_platform_to_umdid_map[custom_url.lower()]
         if ( this_channel_umd_id is None ):
             print("ERROR", this_channel_id)
-            break
+            continue
             
         
         # Set the UMD ID
         this_channel["UmdAccountID"] = this_channel_umd_id
+        found_channels.add(this_channel_id)
         
 
         this_channel["AccountName"] = yt_channel["snippet"]["title"]
@@ -307,7 +310,13 @@ with open(yt_collection_path + "/chan_meta.json") as in_file:
         this_channel["ChannelCommentCount"] = yt_channel["statistics"]["commentCount"]
         this_channel["YTSubscribers"] = yt_channel["statistics"]["subscriberCount"]
         this_channel["ChannelCreateDate"] = datetime            .strptime(yt_channel["snippet"]["publishedAt"], "%Y-%m-%dT%H:%M:%S.000Z")            .strftime("%Y-%m-%d %H:%M:%S")
-        this_channel["TimestampDownload"] = datetime            .fromtimestamp(yt_channel["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
+
+        # Somehow, some channels didn't get a collected timeframe, so we artificially set it to 
+        # now if that's the case
+        if "minerva_collected" in yt_channel:
+            this_channel["TimestampDownload"] = datetime            .fromtimestamp(yt_channel["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            this_channel["TimestampDownload"] = datetime            .fromtimestamp(time.time())            .strftime("%Y-%m-%d %H:%M:%S")
 
         if ( "country" in yt_channel["snippet"] ):
             this_channel["AccountDataCountry"] = yt_channel["snippet"]["country"]
@@ -316,6 +325,7 @@ with open(yt_collection_path + "/chan_meta.json") as in_file:
         
         yt_channels.append(this_channel)
 
+print("Found Channels:", len(found_channels))
 
 yt_accts_df = pd.DataFrame(yt_channels)
 yt_accts_df.to_csv("yt_structure_accounts.csv", index=False, encoding="utf8")
@@ -402,6 +412,10 @@ for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
 
 yt_rows_df = pd.DataFrame(yt_videos)
 yt_rows_df.to_csv("yt_structure_posts.csv", index=False, encoding="utf8")
+
+# Read account data
+yt_accts_df = pd.read_csv("yt_structure_accounts.csv")
+fb_accts_df = pd.read_csv("fb_structure_accounts.csv")
 
 
 yt_accts_indexed_df = yt_accts_df.set_index("UmdAccountID")
