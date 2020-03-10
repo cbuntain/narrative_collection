@@ -13,17 +13,27 @@ import pandas as pd
 
 from datetime import datetime
 
-country = "PL"
+# country = "PL"
 
-coordination_df = pd.read_excel("../../data/poland/Influencers Poland 2019-7-26.xlsx")
+# coordination_df = pd.read_excel("../../data/poland/Influencers Poland 2019-7-26.xlsx")
 
-fb_df = pd.read_csv("../../data/poland/fb_pages.fixed.csv")
-yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.20200227.csv")
-tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
-ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
+# fb_df = pd.read_csv("../../data/poland/fb_pages.fixed.csv")
+# yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.20200227.csv")
+# tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
+# ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
 
-fb_collection_path = "../../data/poland/collections/fb/*.gz"
-yt_collection_path = "../../data/poland/collections/yt/yt_data.20200227"
+# fb_collection_path = "../../data/poland/collections/fb/*.gz"
+# yt_collection_path = "../../data/poland/collections/yt/yt_data.20200227"
+
+country = "LT"
+
+coordination_df = pd.read_excel("../../data/lithuania/LT influencers Nov 15 2019.xlsx")
+fb_df = pd.read_csv("../../data/lithuania/fb_pages.fixed.csv")
+yt_df = pd.read_csv("../../data/lithuania/yt_channels.csv")
+tw_df = pd.read_csv("../../data/lithuania/tw_handles.csv")
+ig_df = pd.read_csv("../../data/lithuania/insta_pages.csv")
+fb_collection_path = "../../data/lithuania/collections/fb/*.gz"
+yt_collection_path = "../../data/lithuania/collections/yt/"
 
 map_platform_post_id_to_umd_post_id = {}
 
@@ -124,7 +134,10 @@ def create_post_row():
 account_map_fb = {}
 fb_rows = []
 
+# We process FB posts first to collect metrics
+#  about the accounts.
 for dataset in glob.iglob(fb_collection_path):
+    print("Processing...", dataset)
     with gzip.open(dataset, "r") as in_file:
         for line_ in in_file:
             line = line_.decode("utf8")
@@ -133,7 +146,17 @@ for dataset in glob.iglob(fb_collection_path):
             
             # Process the author
             post_author = fb_post["account"]
-            fb_author_id = post_author["platformId"]
+            fb_author_id = None
+            if "platformId" in post_author:
+                fb_author_id = post_author["platformId"]
+            elif "id" in post_author:
+                fb_author_id = post_author["id"]
+                if type(fb_author_id) != str:
+                    fb_author_id = "%d" % fb_author_id
+                post_author["platformId"] = fb_author_id
+            else:
+                print("ERROR:", fb_post["platformId"])
+                sys.exit(-1)
             
             if fb_author_id not in account_map_fb:
                 post_author["TimestampDownload"] = datetime.strptime(
@@ -238,9 +261,14 @@ fb_accounts = []
 for acct_id, acct_map in account_map_fb.items():
 
     # Need to fix several errors in the way FB pages get named
-    acct_handle = (acct_map["name"] + "-" + acct_map["platformId"])        .lower()        .replace(" ", "-")        .replace(".", "")        .replace(",", "")        .replace("---", "-")
+    acct_handle = (acct_map["name"] + "-" + acct_map["platformId"]).lower().replace(" ", "-").replace(".", "").replace(",", "").replace("---", "-")
     if "handle" in acct_map:
         acct_handle = acct_map["handle"].lower()
+
+    if acct_handle not in fb_platform_to_umdid_map:
+        # If you see an error here, set your PYTHONIOENCODING to UTF8
+        print("MISSING:", acct_handle)
+        continue
     
     this_account = create_account_row()
     
