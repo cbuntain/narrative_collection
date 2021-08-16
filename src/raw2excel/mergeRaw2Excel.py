@@ -14,28 +14,27 @@ import pandas as pd
 
 from datetime import datetime
 
+# country = "PL"
 
-country = "PL"
+# coordination_df = pd.read_excel("../../data/poland/Influencers Poland 2019-7-26.xlsx")
 
-coordination_df = pd.read_excel("../../data/poland/Influencers Poland 2019-7-26.xlsx")
+# fb_df = pd.read_csv("../../data/poland/fb_pages.fixed.csv")
+# yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.20200227.csv")
+# tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
+# ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
 
-fb_df = pd.read_csv("../../data/poland/fb_pages.fixed.csv")
-yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.20200701.csv")
-tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
-ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
+# fb_collection_path = "../../data/poland/collections/fb/*.gz"
+# yt_collection_path = "../../data/poland/collections/yt/yt_data.20200227"
 
-fb_collection_path = "../../data/poland/collections/fb/full_output.20200630.json.gz"
-yt_collection_path = "../../data/poland/collections/yt/yt_data.20200622"
+country = "LT"
 
-# country = "LT"
-
-#coordination_df = pd.read_excel("../../data/lithuania/LT influencers Nov 15 2019.xlsx")
-#fb_df = pd.read_csv("../../data/lithuania/fb_pages.fixed.csv")
-#yt_df = pd.read_csv("../../data/lithuania/yt_channels.csv")
-#tw_df = pd.read_csv("../../data/lithuania/tw_handles.csv")
-#ig_df = pd.read_csv("../../data/lithuania/insta_pages.csv")
-#fb_collection_path = "../../data/lithuania/collections/fb/final_output.20200630.json.gz"
-#yt_collection_path = "../../data/lithuania/collections/yt/"
+coordination_df = pd.read_excel("../../data/lithuania/LT influencers Nov 15 2019.xlsx")
+fb_df = pd.read_csv("../../data/lithuania/fb_pages.fixed.csv")
+yt_df = pd.read_csv("../../data/lithuania/yt_channels.csv")
+tw_df = pd.read_csv("../../data/lithuania/tw_handles.csv")
+ig_df = pd.read_csv("../../data/lithuania/insta_pages.csv")
+fb_collection_path = "../../data/lithuania/collections/fb/*.gz"
+yt_collection_path = "../../data/lithuania/collections/yt/"
 
 map_platform_post_id_to_umd_post_id = {}
 
@@ -434,12 +433,13 @@ for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
         
         # Timing
         this_video_row["TimestampDownload"] = datetime.fromtimestamp(video["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
-       
+
         pub_at_str = video["snippet"]["publishedAt"]
         if not pub_at_str.endswith("000Z"):
             pub_at_str = pub_at_str.replace("Z", ".000Z")
 
         this_video_row["TimestampPosted"] = datetime.strptime(pub_at_str, "%Y-%m-%dT%H:%M:%S.000Z")
+
         
         # Manually set the following
         this_video_row["Platform"] = "YouTube"
