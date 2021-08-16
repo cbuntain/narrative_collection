@@ -135,6 +135,9 @@ with open(channel_metadata_cache_file, "w") as out_file:
             meta_obj = json.loads(metadata)
         else:
             meta_obj = yt.get_channel_metadata(channel_id, parser=lambda x: x)
+            if len(meta_obj) == 0:
+                print("Error: %s returns empty set" % channel_id)
+                continue
             meta_obj["minerva_collected"] = time.time()
 
         # Write data to cache file and add the upload list to 

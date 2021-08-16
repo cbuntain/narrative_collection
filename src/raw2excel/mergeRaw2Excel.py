@@ -1,74 +1,55 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
-
-
+import sys
 import copy
 import glob
 import gzip
 import json
 import math
+import time
+import os.path
 
 import pandas as pd
 
 from datetime import datetime
 
 
-# In[ ]:
+country = "PL"
 
+coordination_df = pd.read_excel("../../data/poland/Influencers Poland 2019-7-26.xlsx")
 
+fb_df = pd.read_csv("../../data/poland/fb_pages.fixed.csv")
+yt_df = pd.read_csv("../../data/poland/yt_channels.fixed.20200701.csv")
+tw_df = pd.read_csv("../../data/poland/tw_handles.csv")
+ig_df = pd.read_csv("../../data/poland/insta_pages.csv")
 
+fb_collection_path = "../../data/poland/collections/fb/full_output.20200630.json.gz"
+yt_collection_path = "../../data/poland/collections/yt/yt_data.20200622"
 
+# country = "LT"
 
-# In[2]:
+#coordination_df = pd.read_excel("../../data/lithuania/LT influencers Nov 15 2019.xlsx")
+#fb_df = pd.read_csv("../../data/lithuania/fb_pages.fixed.csv")
+#yt_df = pd.read_csv("../../data/lithuania/yt_channels.csv")
+#tw_df = pd.read_csv("../../data/lithuania/tw_handles.csv")
+#ig_df = pd.read_csv("../../data/lithuania/insta_pages.csv")
+#fb_collection_path = "../../data/lithuania/collections/fb/final_output.20200630.json.gz"
+#yt_collection_path = "../../data/lithuania/collections/yt/"
 
+map_platform_post_id_to_umd_post_id = {}
 
-country = "LT"
+if os.path.exists("extracted_post_id_map.json"):
+    with open("extracted_post_id_map.json", "r") as in_file:
+        map_platform_post_id_to_umd_post_id = json.load(in_file)
 
+umd_post_id_numeric = 0
+if len(map_platform_post_id_to_umd_post_id) > 0:
+    umd_post_id_numeric = max([
+        int(x) for x in map_platform_post_id_to_umd_post_id.values()
+    ]) + 1
 
-# In[ ]:
-
-
-
-
-
-# In[3]:
-
-
-coordination_df = pd.read_excel("../../data/lithuania/LT influencers Oct 29 2019.xlsx")
-
-
-# In[4]:
-
-
-fb_df = pd.read_csv("../../data/lithuania/fb_pages.csv", encoding="utf8")
-yt_df = pd.read_csv("../../data/lithuania/yt_channels.csv", encoding="utf8")
-tw_df = pd.read_csv("../../data/lithuania/tw_handles.csv", encoding="utf8")
-ig_df = pd.read_csv("../../data/lithuania/insta_pages.csv", encoding="utf8")
-
-
-# In[ ]:
-
-
-
-
-
-# In[5]:
-
-
-fb_collection_path = "../../data/lithuania/collections/fb/*.gz"
-yt_collection_path = "../../data/lithuania/collections/yt/"
-
-
-# In[ ]:
-
-
-
-
-
-# In[6]:
-
+    print("Updated Min Post ID:", umd_post_id_numeric)
 
 def create_account_row():
     row_schema = {
@@ -105,8 +86,8 @@ def create_account_row():
 
 def create_post_row():
     row_schema = {
+        "UmdPostId": None,
         "AccountPlatformId": None,
-        "PostID": None,
         "PlatformPostID": None,
         "URL": None,
         "VideoTitle": None,
@@ -152,30 +133,13 @@ def create_post_row():
     
     return row_schema
 
-
-# In[ ]:
-
-
-
-
-
-# # Facebook Data
-# 
-# 
-
-# In[ ]:
-
-
-
-
-
-# In[7]:
-
-
 account_map_fb = {}
 fb_rows = []
 
+# We process FB posts first to collect metrics
+#  about the accounts.
 for dataset in glob.iglob(fb_collection_path):
+    print("Processing...", dataset)
     with gzip.open(dataset, "r") as in_file:
         for line_ in in_file:
             line = line_.decode("utf8")
@@ -184,17 +148,17 @@ for dataset in glob.iglob(fb_collection_path):
             
             # Process the author
             post_author = fb_post["account"]
-            
-            if "https://facebook.com/null" == post_author["url"]:
-                print("Null FB URL")
-                print(post_author)
-                continue
-            
             fb_author_id = None
             if "platformId" in post_author:
                 fb_author_id = post_author["platformId"]
+            elif "id" in post_author:
+                fb_author_id = post_author["id"]
+                if type(fb_author_id) != str:
+                    fb_author_id = "%d" % fb_author_id
+                post_author["platformId"] = fb_author_id
             else:
-                fb_author_id = post_author["handle"]
+                print("ERROR:", fb_post["platformId"])
+                sys.exit(-1)
             
             if fb_author_id not in account_map_fb:
                 post_author["TimestampDownload"] = datetime.strptime(
@@ -216,6 +180,13 @@ for dataset in glob.iglob(fb_collection_path):
             this_post_row["AccountPlatformId"] = fb_author_id
             this_post_row["PlatformPostID"] = fb_post["platformId"]
             this_post_row["URL"] = fb_post["postUrl"]
+
+            # Pull the post ID if we have it
+            if ( this_post_row["PlatformPostID"] in map_platform_post_id_to_umd_post_id ):
+                this_post_row["UmdPostId"] = map_platform_post_id_to_umd_post_id[this_post_row["PlatformPostID"]]
+            else:
+                this_post_row["UmdPostId"] = umd_post_id_numeric
+                umd_post_id_numeric += 1
             
             # Get type
             this_post_type = fb_post["type"]
@@ -278,127 +249,65 @@ for dataset in glob.iglob(fb_collection_path):
             # Done
             fb_rows.append(this_post_row)
 
+fb_posts_df = pd.DataFrame(fb_rows)
+fb_posts_df.to_csv("fb_structure_posts.csv", index=False, encoding="utf8")
 
-# In[ ]:
-
-
-
-
-
-# In[8]:
-
-
+# Handle FB Accounts
 fb_platform_to_umdid_map = {
     row[2].replace("https://www.facebook.com/", "").partition("/")[0].lower():row[1] 
     for row in fb_df.itertuples()
 }
 
-
-# In[9]:
-
-
-# fb_accts_df
 fb_accounts = []
 
 for acct_id, acct_map in account_map_fb.items():
 
     # Need to fix several errors in the way FB pages get named
-    acct_handle = None
-    if ( "platformId" in acct_map ):
-        acct_handle = (acct_map["name"] + "-" + acct_map["platformId"])            .lower()            .replace(" ", "-")            .replace(".", "")            .replace(",", "")            .replace("---", "-").partition("/")[0].lower()
+    acct_handle = (acct_map["name"] + "-" + acct_map["platformId"]).lower().replace(" ", "-").replace(".", "").replace(",", "").replace("---", "-")
     if "handle" in acct_map:
         acct_handle = acct_map["handle"].lower()
-        
-    local_platform_id = None
-    if ( "platformId" in acct_map ):
-        local_platform_id = acct_map["platformId"]
-    else:
-        local_platform_id = acct_handle
-        print("No platform ID:", acct_map)
+
+    if acct_handle not in fb_platform_to_umdid_map:
+        try:
+            print("MISSING:", acct_handle)
+        except:
+            print("Failed to print...", type(acct_handle))
+            print(acct_handle.decode("utf8"))
+        continue
     
     this_account = create_account_row()
     
-    if acct_handle in fb_platform_to_umdid_map:
-        this_account["UmdAccountID"] = fb_platform_to_umdid_map[acct_handle]
-        this_account["AccountPlatformId"] = local_platform_id
-        this_account["AccountName"] = acct_map["name"]
-        this_account["FBFriends"] = acct_map["subscriberCount"]
-        this_account["FBPostCount"] = acct_map["FBPostCount"]
-        this_account["FBAllReactions"] = acct_map["FBAllReactions"]
-        this_account["FBComments"] = acct_map["FBComments"]
-        this_account["FBLikes"] = acct_map["FBLikes"]
-        this_account["FBShares"] = acct_map["FBShares"]
-        this_account["Verified"] = acct_map["verified"]
-        this_account["TimestampDownload"] = acct_map["TimestampDownload"].strftime("%Y-%m-%d %H:%M:%S")
-
-        this_account["AccountDataCountry"] = country
-
-        fb_accounts.append(this_account)
-    else:
-        print("Failed to find matching UMD ID:", acct_handle)
-        print(acct_map)
-
-
-# In[ ]:
-
-
-
-
-
-# In[10]:
-
-
-fb_posts_df = pd.DataFrame(fb_rows)
-
-
-# In[11]:
+    this_account["UmdAccountID"] = fb_platform_to_umdid_map[acct_handle]
+    this_account["AccountPlatformId"] = acct_map["platformId"]
+    this_account["AccountName"] = acct_map["name"]
+    this_account["FBFriends"] = acct_map["subscriberCount"]
+    this_account["FBPostCount"] = acct_map["FBPostCount"]
+    this_account["FBAllReactions"] = acct_map["FBAllReactions"]
+    this_account["FBComments"] = acct_map["FBComments"]
+    this_account["FBLikes"] = acct_map["FBLikes"]
+    this_account["FBShares"] = acct_map["FBShares"]
+    this_account["Verified"] = acct_map["verified"]
+    this_account["TimestampDownload"] = acct_map["TimestampDownload"].strftime("%Y-%m-%d %H:%M:%S")
+    
+    this_account["AccountDataCountry"] = country
+    
+    fb_accounts.append(this_account)
 
 
 fb_accts_df = pd.DataFrame(fb_accounts)
 
-
-# In[ ]:
-
-
-
-
-
-# In[12]:
-
-
-fb_posts_df.to_csv("fb_structure_posts.csv", index=False, encoding="utf8")
 fb_accts_df.to_csv("fb_structure_accounts.csv", index=False, encoding="utf8")
 
-
-# In[ ]:
-
-
-
-
-
-# # YouTube Data
-
-# In[ ]:
-
-
-
-
-
-# In[13]:
-
-
+######################################################
+# YouTube Analysis
 yt_platform_to_umdid_map = {
     row[2].rpartition("/")[-1].lower():row[1] 
     for row in yt_df.itertuples()
 }
 
-
-# In[14]:
-
-
 found_channels = set()
 
-yt_channels = {}
+yt_channels = []
 with open(yt_collection_path + "/chan_meta.json") as in_file:
     for line in in_file:
         yt_channel = json.loads(line)
@@ -418,12 +327,14 @@ with open(yt_collection_path + "/chan_meta.json") as in_file:
                 if custom_url.lower() in yt_platform_to_umdid_map:
                     this_channel_umd_id = yt_platform_to_umdid_map[custom_url.lower()]
         if ( this_channel_umd_id is None ):
-            print("FATAL ERROR", this_channel_id)
+            print("ERROR", this_channel_id)
             continue
             
         
         # Set the UMD ID
         this_channel["UmdAccountID"] = this_channel_umd_id
+        found_channels.add(this_channel_id)
+        
 
         this_channel["AccountName"] = yt_channel["snippet"]["title"]
         this_channel["AccountPlatformId"] = yt_channel["id"]
@@ -431,43 +342,31 @@ with open(yt_collection_path + "/chan_meta.json") as in_file:
         this_channel["ChannelViewCount"] = yt_channel["statistics"]["viewCount"]
         this_channel["ChannelCommentCount"] = yt_channel["statistics"]["commentCount"]
         this_channel["YTSubscribers"] = yt_channel["statistics"]["subscriberCount"]
-        this_channel["ChannelCreateDate"] = datetime            .strptime(yt_channel["snippet"]["publishedAt"], "%Y-%m-%dT%H:%M:%S.000Z")            .strftime("%Y-%m-%d %H:%M:%S")
-        this_channel["TimestampDownload"] = datetime            .fromtimestamp(yt_channel["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
+
+        pub_at_str = yt_channel["snippet"]["publishedAt"]
+        if not pub_at_str.endswith("000Z"):
+            pub_at_str = pub_at_str.replace("Z", ".000Z")
+
+        this_channel["ChannelCreateDate"] = datetime.strptime(pub_at_str, "%Y-%m-%dT%H:%M:%S.000Z")            .strftime("%Y-%m-%d %H:%M:%S")
+
+        # Somehow, some channels didn't get a collected timeframe, so we artificially set it to 
+        # now if that's the case
+        if "minerva_collected" in yt_channel:
+            this_channel["TimestampDownload"] = datetime            .fromtimestamp(yt_channel["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            this_channel["TimestampDownload"] = datetime            .fromtimestamp(time.time())            .strftime("%Y-%m-%d %H:%M:%S")
 
         if ( "country" in yt_channel["snippet"] ):
             this_channel["AccountDataCountry"] = yt_channel["snippet"]["country"]
         else:
             this_channel["AccountDataCountry"] = country
         
-        yt_channels[this_channel_id] = this_channel
+        yt_channels.append(this_channel)
 
+print("Found Channels:", len(found_channels))
 
-# In[ ]:
-
-
-
-
-
-# In[15]:
-
-
-yt_accts_df = pd.DataFrame(list(yt_channels.values()))
-
-
-# In[16]:
-
-
+yt_accts_df = pd.DataFrame(yt_channels)
 yt_accts_df.to_csv("yt_structure_accounts.csv", index=False, encoding="utf8")
-
-
-# In[ ]:
-
-
-
-
-
-# In[17]:
-
 
 def duration_to_seconds(dur_str):
     """Convert YT's ISO timespans into seconds"""
@@ -492,10 +391,6 @@ def duration_to_seconds(dur_str):
     return total_seconds
 
 
-# In[18]:
-
-
-
 yt_videos = []
 
 for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
@@ -513,6 +408,13 @@ for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
         this_video_row["PlatformPostID"] = video["id"]
         this_video_row["URL"] = "https://www.youtube.com/watch?v=" + video["id"]
 
+        # Pull the video ID if we have it
+        if ( this_video_row["PlatformPostID"] in map_platform_post_id_to_umd_post_id ):
+            this_video_row["UmdPostId"] = map_platform_post_id_to_umd_post_id[this_video_row["PlatformPostID"]]
+        else:
+            this_video_row["UmdPostId"] = umd_post_id_numeric
+            umd_post_id_numeric += 1
+
         # Title and description
         this_video_row["Text"] = video["snippet"]["description"]
         this_video_row["VideoTitle"] = video["snippet"]["title"]
@@ -528,12 +430,16 @@ for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
             this_video_row["YTComments"] = video["statistics"]["commentCount"]
 
         # Get length
-        this_video_row["LengthofYTVid"] =             duration_to_seconds(video["contentDetails"]["duration"])
+        this_video_row["LengthofYTVid"] = duration_to_seconds(video["contentDetails"]["duration"])
         
         # Timing
-        this_video_row["TimestampDownload"] = datetime            .fromtimestamp(video["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
-        
-        this_video_row["TimestampPosted"] = datetime            .strptime(video["snippet"]["publishedAt"], "%Y-%m-%dT%H:%M:%S.000Z")
+        this_video_row["TimestampDownload"] = datetime.fromtimestamp(video["minerva_collected"])            .strftime("%Y-%m-%d %H:%M:%S")
+       
+        pub_at_str = video["snippet"]["publishedAt"]
+        if not pub_at_str.endswith("000Z"):
+            pub_at_str = pub_at_str.replace("Z", ".000Z")
+
+        this_video_row["TimestampPosted"] = datetime.strptime(pub_at_str, "%Y-%m-%dT%H:%M:%S.000Z")
         
         # Manually set the following
         this_video_row["Platform"] = "YouTube"
@@ -543,68 +449,26 @@ for video_path in glob.iglob(yt_collection_path + "/channels/*/*.json"):
 #         this_video_row["YTShares"] =
 
         yt_videos.append(this_video_row)
-
-
-# In[ ]:
-
-
-
-
-
-# In[19]:
+        umd_post_id_numeric += 1
 
 
 yt_rows_df = pd.DataFrame(yt_videos)
-
-
-# In[20]:
-
-
 yt_rows_df.to_csv("yt_structure_posts.csv", index=False, encoding="utf8")
 
-
-# In[ ]:
-
-
-
-
-
-# # Merge Account Info
-
-# In[21]:
+# Read account data
+yt_accts_df = pd.read_csv("yt_structure_accounts.csv")
+fb_accts_df = pd.read_csv("fb_structure_accounts.csv")
 
 
 yt_accts_indexed_df = yt_accts_df.set_index("UmdAccountID")
 fb_accts_indexed_df = fb_accts_df.set_index("UmdAccountID")
 
 
-# In[22]:
-
-
 all_umd_ids = set(fb_accts_indexed_df.index).union(yt_accts_indexed_df.index)
-
-
-# In[23]:
-
 
 print("Accounts:", len(all_umd_ids))
 
-
-# In[ ]:
-
-
-
-
-
-# In[24]:
-
-
 full_merged_df = fb_accts_indexed_df    .join(yt_accts_indexed_df, how="outer", lsuffix="_fb", rsuffix="_yt")
-
-
-# In[25]:
-
-
 
 new_rows = []
 
@@ -628,20 +492,6 @@ for idx, row in full_merged_df.to_dict("index").items():
     new_rows.append(new_row)
 
 
-# In[26]:
-
-
 final_acct_df = pd.DataFrame(new_rows).set_index("UmdAccountID")
-
-
-# In[28]:
-
-
-final_acct_df.to_csv("merged_accounts.csv", index=True, encoding="utf8")
-
-
-# In[ ]:
-
-
-
+final_acct_df.to_csv("merged_accounts.csv", index=True)
 
